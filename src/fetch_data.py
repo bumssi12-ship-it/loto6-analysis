@@ -2,9 +2,14 @@
 fetch_data.py
 みずほ銀行公式CSV収集モジュール（実際の構造に基づく）
 構造: A52行（スキップ）+ データ行、2行1セット、UTF-8, CRLF
+
+[注記] みずほ銀行サーバーのWAFがデータスタ/HTTPクリエントを403 Forbiddenで
+ブロッキすることが確認されている（ローカルPCとGitHub Actionsの両方で発生）。
+その場合はブラウザで手動ダウンロードし、--local でローカルファイルを渡すこと。
 """
 from __future__ import annotations
 
+import argparse
 import re
 import logging
 from datetime import datetime
@@ -25,8 +30,6 @@ MIZUHO_URL = (
     "https://www.mizuhobank.co.jp"
     "/retail/takarakuji/loto/loto6/csv/loto6.csv"
 )
-# ブラウザに近いヘッダーを使用（"compatible;" を含むUA等はWAFにボットと
-# 判定されやすく、403 Forbiddenの原因になるため避ける）
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -103,25 +106,53 @@ def parse_mizuho_csv(text: str) -> list[dict]:
     return records
 
 
+def _read_local_text(path: str) -> str:
+    """
+    ブラウザで手動保存したCSVファイルをUTF-8として読み込む。
+    UTF-8で失敗した場合はShift-JIS（cp932）でリトリイする。
+
+    Args:
+        path: ローカルCSVファイルパス
+    Returns:
+        ファイル内容の文字列
+    """
+    p = Path(path)
+    try:
+        return p.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        logging.warning("UTF-8読み込み失敗、Shift-JISで再試行: %s", path)
+        return p.read_text(encoding="cp932")
+
+
 def fetch_and_save(
     url: str = MIZUHO_URL,
     output: str = "data/raw/loto6_mizuho.csv",
+    local_path: str | None = None,
 ) -> None:
     """
-    みずほ公式CSVを取得し、正規化して保存する。
+    みずほ公式CSVを取得（またはローカルファイルから読込）し、正規化して保存する。
 
     Args:
-        url: 取得対象URL
+        url: 取得対象URL（local_pathが指定されていれば無視される）
         output: 保存先パス
+        local_path: 指定された場合、リブック取得の代わりにこのローカル
+            ファイルをパースする（403 Forbidden等でHTTP取得できない場合の
+            回避策。ブラウザで手動ダウンロードしたCSVを渡すこと）
     """
-    logging.info("収集開始: %s", url)
     try:
-        session = requests.Session()
-        session.headers.update(HEADERS)
-        resp = session.get(url, timeout=15)
-        resp.raise_for_status()
-        resp.encoding = "utf-8"
-        records = parse_mizuho_csv(resp.text)
+        if local_path:
+            logging.info("ローカルファイルから読込: %s", local_path)
+            text = _read_local_text(local_path)
+        else:
+            logging.info("収集開始: %s", url)
+            session = requests.Session()
+            session.headers.update(HEADERS)
+            resp = session.get(url, timeout=15)
+            resp.raise_for_status()
+            resp.encoding = "utf-8"
+            text = resp.text
+
+        records = parse_mizuho_csv(text)
 
         if not records:
             raise ValueError("パース結果が0件です。CSV構造が変更された可能性があります。")
@@ -146,4 +177,15 @@ def fetch_and_save(
 
 
 if __name__ == "__main__":
-    fetch_and_save()
+    parser = argparse.ArgumentParser(description="みずほ公式CSV収集")
+    parser.add_argument(
+        "--local",
+        dest="local_path",
+        default=None,
+        help=(
+            "403 Forbidden等でHTTP取得できない場合、ブラウザで手動保存した"
+            "CSVファイルのパスを指定する"
+        ),
+    )
+    args = parser.parse_args()
+    fetch_and_save(local_path=args.local_path)
