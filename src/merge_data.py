@@ -21,20 +21,19 @@ OUTPUT_CSV   = "data/raw/loto6_all.csv"
 
 # SOURCE B 컬럼 매핑 (KYO's CSV 실제 헤더 → 정규화)
 COLUMN_MAP = {
-    "回号":       "round",
+    "開催回":     "round",
     "第 1 数字":    "n1", "第 2 数字": "n2", "第 3 数字": "n3",
     "第 4 数字":    "n4", "第 5 数字": "n5", "第 6 数字": "n6",
-    "ボーナス数字": "bonus",
-    "1 等当せん金額": "prize1_amount", "1 等当せん口数": "prize1_winners",
-    "2 等当せん金額": "prize2_amount", "2 等当せん口数": "prize2_winners",
-    "3 等当せん金額": "prize3_amount", "3 等当せん口数": "prize3_winners",
-    "4 等当せん金額": "prize4_amount", "4 等当せん口数": "prize4_winners",
-    "5 等当せん金額": "prize5_amount", "5 等当せん口数": "prize5_winners",
-    "6 等当せん金額": "prize6_amount", "6 等当せん口数": "prize6_winners",
+    "BONUS 数字": "bonus",
+    "1 等賞金": "prize1_amount", "1 等口数": "prize1_winners",
+    "2 等賞金": "prize2_amount", "2 等口数": "prize2_winners",
+    "3 等賞金": "prize3_amount", "3 等口数": "prize3_winners",
+    "4 等賞金": "prize4_amount", "4 等口数": "prize4_winners",
+    "5 等賞金": "prize5_amount", "5 等口数": "prize5_winners",
 }
 
-PRIZE_AMOUNT_COLS = [f"prize{i}_amount" for i in range(1, 7)]
-PRIZE_WINNER_COLS = [f"prize{i}_winners" for i in range(1, 7)]
+PRIZE_AMOUNT_COLS = [f"prize{i}_amount" for i in range(1, 6)]
+PRIZE_WINNER_COLS = [f"prize{i}_winners" for i in range(1, 6)]
 
 
 def clean_prize_columns(df: pd.DataFrame) -> pd.DataFrame:
