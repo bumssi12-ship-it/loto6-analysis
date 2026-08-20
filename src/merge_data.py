@@ -19,7 +19,8 @@ MIZUHO_CSV   = "data/raw/loto6_mizuho.csv"
 NUMBERS_CSV  = "data/raw/loto6_numbers.csv"   # .gitignore 대상
 OUTPUT_CSV   = "data/raw/loto6_all.csv"
 
-# SOURCE B 컬럼 매핑 (KYO's CSV 실제 헤더 → 정규화)
+# SOURCE B 컬럼 매핑 (Unicode 문자열로 명시)
+# 실제 헤더: ['開催回', '日付', '第 1 数字', '第 2 数字', ...]
 COLUMN_MAP = {
     "開催回":     "round",
     "第 1 数字":    "n1", "第 2 数字": "n2", "第 3 数字": "n3",
@@ -27,7 +28,7 @@ COLUMN_MAP = {
     "BONUS 数字": "bonus",
     "1 等賞金": "prize1_amount", "1 等口数": "prize1_winners",
     "2 等賞金": "prize2_amount", "2 等口数": "prize2_winners",
-    "3 等賞金": "prize3_amount", "3 等口数": "prize3_winners",
+    "3 等賞金": "prize3_amount", "3 等口수": "prize3_winners",
     "4 等賞金": "prize4_amount", "4 等口数": "prize4_winners",
     "5 等賞金": "prize5_amount", "5 等口数": "prize5_winners",
 }
@@ -58,8 +59,8 @@ def clean_prize_columns(df: pd.DataFrame) -> pd.DataFrame:
 def merge_sources() -> None:
     """SOURCE A + SOURCE B 를 round 기준으로 병합해 loto6_all.csv 저장"""
     df_a = pd.read_csv(MIZUHO_CSV, encoding="utf-8")
-    # SOURCE B 는 일본어 Windows 인코딩 (CP932/Shift-JIS)
-    df_b = pd.read_csv(NUMBERS_CSV, encoding="cp932")
+    # SOURCE B 는 Shift-JIS 인코딩 (cp932 대신 shift_jis 사용)
+    df_b = pd.read_csv(NUMBERS_CSV, encoding="shift_jis")
     
     logging.info(f"SOURCE B 원본 컬럼: {df_b.columns.tolist()[:5]}...")
     
