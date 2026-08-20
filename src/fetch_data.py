@@ -25,8 +25,16 @@ MIZUHO_URL = (
     "https://www.mizuhobank.co.jp"
     "/retail/takarakuji/loto/loto6/csv/loto6.csv"
 )
+# ブラウザに近いヘッダーを使用（"compatible;" を含むUA等はWAFにボットと
+# 判定されやすく、403 Forbiddenの原因になるため避ける）
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; loto6-analysis/1.0)"
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/csv,text/plain,*/*",
+    "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+    "Referer": "https://www.mizuhobank.co.jp/retail/takarakuji/loto/loto6/index.html",
 }
 
 ERA_BASE = {"令和": 2018, "平成": 1988, "昭和": 1925}
@@ -108,7 +116,9 @@ def fetch_and_save(
     """
     logging.info("収集開始: %s", url)
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=10)
+        session = requests.Session()
+        session.headers.update(HEADERS)
+        resp = session.get(url, timeout=15)
         resp.raise_for_status()
         resp.encoding = "utf-8"
         records = parse_mizuho_csv(resp.text)
