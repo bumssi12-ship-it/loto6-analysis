@@ -6,9 +6,12 @@ import os
 import sys
 import time
 import uuid
+import random
+import itertools
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
+import numpy as np
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -85,6 +88,114 @@ def send_ga4_event(event_name: str, params: dict | None = None) -> None:
         pass
 
 
+# ── 추천 함수 (src/analyze.py 에서 복사) ────────────────────
+NUMBER_COLS = ["n1", "n2", "n3", "n4", "n5", "n6"]
+
+
+def generate_recommendations(
+    df: pd.DataFrame,
+    mode: str = "balanced",
+    n_combinations: int = 5,
+    recent_n: int = 30
+) -> pd.DataFrame:
+    """
+    통계 기반 추천 조합 생성.
+
+    Args:
+        df: 전체 당첨 데이터 (loto6_all.csv)
+        mode: 추천 모드
+            - "balanced": 핫/노멀 균형 (hot 2~3 개 + normal 3~4 개)
+            - "hot": 핫 넘버 위주 (hot 4~5 개)
+            - "cold": 콜드 넘버 포함 (cold 1~2 개 + 나머지 랜덤)
+            - "random": 완전 무작위 (통계 필터만 적용)
+        n_combinations: 생성할 조합 수
+        recent_n: 핫/콜드 판정을 위한 최근 회차 수
+
+    Returns:
+        추천 조합 DataFrame (columns: combination_id, n1~n6, bonus, mode, note)
+    """
+    # 핫/콜드/노멀 분류
+    recent = df.tail(recent_n)
+    recent_counts = pd.Series(
+        recent[NUMBER_COLS].values.flatten()
+    ).value_counts().reindex(range(1, 44), fill_value=0)
+    status = recent_counts.apply(
+        lambda x: "hot" if x >= 3 else ("cold" if x == 0 else "normal")
+    )
+    hot_nums = status[status == "hot"].index.tolist()
+    cold_nums = status[status == "cold"].index.tolist()
+    normal_nums = status[status == "normal"].index.tolist()
+
+    # 전체 출현 빈도 (가중치용)
+    all_nums = df[NUMBER_COLS].values.flatten()
+    all_counts = pd.Series(all_nums).value_counts().reindex(range(1, 44), fill_value=0)
+
+    # 과거 당첨 합계 분포 (중앙 80% 구간 계산)
+    past_sums = df[NUMBER_COLS].sum(axis=1)
+    sum_low = past_sums.quantile(0.1)
+    sum_high = past_sums.quantile(0.9)
+
+    combinations = []
+    for i in range(n_combinations):
+        while True:
+            if mode == "balanced":
+                # hot 2~3 개 + normal 3~4 개
+                n_hot = random.randint(2, 3)
+                n_normal = 6 - n_hot
+                selected = random.sample(hot_nums, n_hot) + random.sample(normal_nums, n_normal)
+            elif mode == "hot":
+                # hot 4~5 개 + normal 1~2 개
+                n_hot = random.randint(4, 5)
+                n_normal = 6 - n_hot
+                selected = random.sample(hot_nums, min(n_hot, len(hot_nums)))
+                if len(selected) < 6:
+                    selected += random.sample(normal_nums, 6 - len(selected))
+            elif mode == "cold":
+                # cold 1~2 개 + 나머지 랜덤
+                n_cold = random.randint(1, 2)
+                selected = random.sample(cold_nums, min(n_cold, len(cold_nums)))
+                remaining = [x for x in range(1, 44) if x not in selected]
+                selected += random.sample(remaining, 6 - len(selected))
+            else:  # random
+                selected = random.sample(range(1, 44), 6)
+
+            selected = sorted(selected)
+
+            # 필터: 합계가 과거 10~90 백분위 구간인지 확인
+            if not (sum_low <= sum(selected) <= sum_high):
+                continue
+
+            # 필터: 홀짝 비율 (2:4 ~ 4:2)
+            odd_count = sum(1 for x in selected if x % 2 == 1)
+            if not (2 <= odd_count <= 4):
+                continue
+
+            # 필터: 고저 비율 (2:4 ~ 4:2) — 1~21 저, 22~43 고
+            low_count = sum(1 for x in selected if x <= 21)
+            if not (2 <= low_count <= 4):
+                continue
+
+            # 보너스 번호 (과거 보너스 빈도 상위 10 개 중 랜덤)
+            bonus_pool = df["bonus"].value_counts().head(10).index.tolist()
+            bonus = random.choice(bonus_pool)
+
+            combinations.append({
+                "combination_id": i + 1,
+                "n1": selected[0],
+                "n2": selected[1],
+                "n3": selected[2],
+                "n4": selected[3],
+                "n5": selected[4],
+                "n6": selected[5],
+                "bonus": bonus,
+                "mode": mode,
+                "note": f"합계={sum(selected)}, 홀짝={odd_count}:6-odd_count, 고저={low_count}:6-low_count"
+            })
+            break
+
+    return pd.DataFrame(combinations)
+
+
 # ── 페이지 설정 ──────────────────────────────────────────
 st.set_page_config(
     page_title="ロト 6 統計分析",
@@ -145,7 +256,6 @@ n_rec = st.sidebar.slider("生成する組合数", 1, 20, 5)
 
 # 추천 생성 버튼
 if st.sidebar.button("🎲 番号を生成"):
-    from src.analyze import generate_recommendations
     rec_df = generate_recommendations(
         df_all, mode=rec_mode, n_combinations=n_rec, recent_n=recent_n
     )
