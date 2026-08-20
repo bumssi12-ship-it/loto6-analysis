@@ -1,6 +1,11 @@
 """
 merge_data.py
-SOURCE A（みずほ）+ SOURCE B（KYO's）→ loto6_all.csv に統合
+SOURCE A（みずほ: 回号・抽せん日・場所）+
+SOURCE B（KYO's: 当せん番号・当せん金）→ loto6_all.csv に統合
+
+[注記] KYO's LOTO6 CSVはShift-JIS（cp932）でエンコードされていることが
+確認されている（UTF-8では UnicodeDecodeError になる）。そのため
+SOURCE Bの読み込みはUTF-8失敗時にcp932へフォーレログーする。
 """
 from __future__ import annotations
 
@@ -18,9 +23,10 @@ logging.basicConfig(
 )
 
 MIZUHO_CSV = "data/raw/loto6_mizuho.csv"
-NUMBERS_CSV = "data/raw/loto6_numbers.csv"
+NUMBERS_CSV = "data/raw/loto6_numbers.csv"  # .gitignore 対象（KYO's, 再配布禁止）
 OUTPUT_CSV = "data/raw/loto6_all.csv"
 
+# SOURCE B カラムマッピング（KYO's CSV 実ヘッダー → 正規化）
 COLUMN_MAP = {
     "回号": "round",
     "第1数字": "n1", "第2数字": "n2", "第3数字": "n3",
@@ -38,12 +44,34 @@ PRIZE_AMOUNT_COLS = [f"prize{i}_amount" for i in range(1, 7)]
 PRIZE_WINNER_COLS = [f"prize{i}_winners" for i in range(1, 7)]
 
 
+def read_csv_flexible(path: str) -> pd.DataFrame:
+    """
+    CSVをUTF-8として読み込み、失敗した場合はShift-JIS（cp932）で
+    リトリイする（KYO's LOTO6 CSV は cp932 で配布されているため）。
+
+    Args:
+        path: CSVファイルパス
+
+    Returns:
+        読み込んだDataFrame
+    """
+    try:
+        return pd.read_csv(path, encoding="utf-8")
+    except UnicodeDecodeError:
+        logging.warning("UTF-8読み込み失敗、Shift-JISで再試行: %s", path)
+        return pd.read_csv(path, encoding="cp932")
+
+
 def clean_prize_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
-    当せん金・口数カラムを前処理する（カンマ除去・欠損値0埋め・整数変換）。
+    当せん金・口数カラムを前処理する。
+    - カンマ除去: "200,000,000" → 200000000
+    - 欠損値("-", 空白) → 0
+    - 整数型に変換
 
     Args:
         df: SOURCE B の生データ
+
     Returns:
         前処理済みのDataFrame
     """
@@ -68,10 +96,14 @@ def merge_sources(
     """
     SOURCE A + SOURCE B を round 基準で統合し loto6_all.csv に保存する。
 
+    numbers_path が存在しない場合は KYO's CSV 未配置として例外を発生させる
+    （呼び出し側／ CI で存在チチェックを行うこと）。
+
     Args:
         mizuho_path: SOURCE A（みずほ）CSVパス
         numbers_path: SOURCE B（KYO's）CSVパス
         output_path: 統合結果の保存先パス
+
     Returns:
         統合済みDataFrame
     """
@@ -82,8 +114,8 @@ def merge_sources(
             " 手動ダウンロードして配置してください（再配布・コミット禁止）。"
         )
 
-    df_a = pd.read_csv(mizuho_path, encoding="utf-8")
-    df_b = pd.read_csv(numbers_path, encoding="utf-8")
+    df_a = read_csv_flexible(mizuho_path)
+    df_b = read_csv_flexible(numbers_path)
     df_b = df_b.rename(columns=COLUMN_MAP)
     df_b = clean_prize_columns(df_b)
 
