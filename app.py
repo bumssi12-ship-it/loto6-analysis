@@ -89,6 +89,7 @@ def send_ga4_event(event_name: str, params: dict | None = None) -> None:
 
 
 # ── 추천 함수 (src/analyze.py 에서 복사) ────────────────────
+# 실제 컬럼명 확인 후 설정
 NUMBER_COLS = ["n1", "n2", "n3", "n4", "n5", "n6"]
 
 
@@ -116,8 +117,15 @@ def generate_recommendations(
     """
     # 핫/콜드/노멀 분류
     recent = df.tail(recent_n)
+    
+    # NUMBER_COLS 가 실제 컬럼에 있는지 확인
+    available_cols = [col for col in NUMBER_COLS if col in df.columns]
+    if len(available_cols) < 6:
+        st.error(f"컬럼 오류: {NUMBER_COLS} 중 {available_cols}만 존재합니다.")
+        return pd.DataFrame()
+    
     recent_counts = pd.Series(
-        recent[NUMBER_COLS].values.flatten()
+        recent[available_cols].values.flatten()
     ).value_counts().reindex(range(1, 44), fill_value=0)
     status = recent_counts.apply(
         lambda x: "hot" if x >= 3 else ("cold" if x == 0 else "normal")
@@ -127,11 +135,11 @@ def generate_recommendations(
     normal_nums = status[status == "normal"].index.tolist()
 
     # 전체 출현 빈도 (가중치용)
-    all_nums = df[NUMBER_COLS].values.flatten()
+    all_nums = df[available_cols].values.flatten()
     all_counts = pd.Series(all_nums).value_counts().reindex(range(1, 44), fill_value=0)
 
     # 과거 당첨 합계 분포 (중앙 80% 구간 계산)
-    past_sums = df[NUMBER_COLS].sum(axis=1)
+    past_sums = df[available_cols].sum(axis=1)
     sum_low = past_sums.quantile(0.1)
     sum_high = past_sums.quantile(0.9)
 
@@ -176,8 +184,11 @@ def generate_recommendations(
                 continue
 
             # 보너스 번호 (과거 보너스 빈도 상위 10 개 중 랜덤)
-            bonus_pool = df["bonus"].value_counts().head(10).index.tolist()
-            bonus = random.choice(bonus_pool)
+            if "bonus" in df.columns:
+                bonus_pool = df["bonus"].value_counts().head(10).index.tolist()
+                bonus = random.choice(bonus_pool)
+            else:
+                bonus = random.randint(1, 43)
 
             combinations.append({
                 "combination_id": i + 1,
@@ -259,11 +270,12 @@ if st.sidebar.button("🎲 番号を生成"):
     rec_df = generate_recommendations(
         df_all, mode=rec_mode, n_combinations=n_rec, recent_n=recent_n
     )
-    st.session_state["recommendations"] = rec_df
-    send_ga4_event("recommendations_generated", {
-        "mode": rec_mode,
-        "count": n_rec
-    })
+    if len(rec_df) > 0:
+        st.session_state["recommendations"] = rec_df
+        send_ga4_event("recommendations_generated", {
+            "mode": rec_mode,
+            "count": n_rec
+        })
 
 # フィルタリング (r_range 는 (min, max) 튜플)
 mask = (df_all["round"] >= r_range[0]) & (df_all["round"] <= r_range[1])
@@ -313,12 +325,13 @@ with tab4:
     )
     if "recommendations" in st.session_state:
         rec_df = st.session_state["recommendations"]
-        st.dataframe(
-            rec_df[["combination_id", "n1", "n2", "n3", "n4", "n5", "n6", "bonus", "mode"]],
-            use_container_width=True,
-            hide_index=True
-        )
-        send_ga4_event("chart_viewed", {"chart_type": "recommendations"})
+        if len(rec_df) > 0:
+            st.dataframe(
+                rec_df[["combination_id", "n1", "n2", "n3", "n4", "n5", "n6", "bonus", "mode"]],
+                use_container_width=True,
+                hide_index=True
+            )
+            send_ga4_event("chart_viewed", {"chart_type": "recommendations"})
     else:
         st.info("左のサイドバーで推薦モードを選択し、「🎲 番号を生成」ボタンを押してください。")
 
