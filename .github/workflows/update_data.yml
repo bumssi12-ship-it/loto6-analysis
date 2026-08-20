@@ -1,0 +1,65 @@
+name: Monthly Loto6 Data Update
+
+on:
+  schedule:
+    - cron: '0 9 1 * *'
+      timezone: "Asia/Tokyo"
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create required directories
+        run: mkdir -p data/raw data/analysis charts logs
+
+      - name: Fetch latest Mizuho data (SOURCE A)
+        run: python src/fetch_data.py
+
+      - name: Merge data sources
+        run: |
+          if [ -f data/raw/loto6_numbers.csv ]; then
+            python src/merge_data.py
+          else
+            echo "loto6_numbers.csv 未配置 — 番号・当せん金分析をスキップします"
+            cp data/raw/loto6_mizuho.csv data/raw/loto6_all.csv
+          fi
+
+      - name: Run statistical analysis
+        run: python src/analyze.py
+
+      - name: Generate charts
+        run: python src/visualize.py
+
+      - name: Commit updated artifacts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/raw/loto6_mizuho.csv \
+                  data/analysis/ charts/ data/last_updated.txt
+          git diff --staged --quiet || git commit -m "chore: auto-update loto6 data $(date +'%Y-%m-%d')"
+          git push

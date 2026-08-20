@@ -1,0 +1,22 @@
+# 環境変数（GA4キーなど — 絶対にコミット禁止）
+.env
+
+# ライセンス制約データ（KYO's LOTO6 — 再配布禁止）
+data/raw/loto6_numbers.csv
+
+# ログ
+logs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+.ipynb_checkpoints/
+
+# 仮想環境
+venv/
+.venv/
+
+# Streamlitキャッシュ
+.streamlit/secrets.toml
