@@ -20,7 +20,6 @@ NUMBERS_CSV  = "data/raw/loto6_numbers.csv"   # .gitignore 대상
 OUTPUT_CSV   = "data/raw/loto6_all.csv"
 
 # SOURCE B 컬럼 매핑 (KYO's CSV 실제 헤더 → 정규화)
-# 실제 헤더: ['開催回', '日付', '第 1 数字', '第 2 数字', '第 3 数字', '第 4 数字', '第 5 数字', '第 6 数字', 'BONUS 数字', ...]
 COLUMN_MAP = {
     "開催回":     "round",
     "第 1 数字":    "n1", "第 2 数字": "n2", "第 3 数字": "n3",
@@ -62,8 +61,12 @@ def merge_sources() -> None:
     # SOURCE B 는 일본어 Windows 인코딩 (CP932/Shift-JIS)
     df_b = pd.read_csv(NUMBERS_CSV, encoding="cp932")
     
+    logging.info(f"SOURCE B 원본 컬럼: {df_b.columns.tolist()[:5]}...")
+    
     # 컬럼 매핑 적용
     df_b = df_b.rename(columns=COLUMN_MAP)
+    
+    logging.info(f"매핑 후 컬럼: {df_b.columns.tolist()[:5]}...")
     
     # 당첨금 컬럼 정제
     df_b = clean_prize_columns(df_b)
@@ -76,6 +79,7 @@ def merge_sources() -> None:
     Path(OUTPUT_CSV).parent.mkdir(parents=True, exist_ok=True)
     df_merged.to_csv(OUTPUT_CSV, index=False, encoding="utf-8")
     logging.info(f"병합 완료: {OUTPUT_CSV} ({len(df_merged)}건)")
+    logging.info(f"최종 컬럼: {df_merged.columns.tolist()[:8]}...")
 
 
 if __name__ == "__main__":
