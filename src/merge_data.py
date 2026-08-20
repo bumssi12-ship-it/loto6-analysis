@@ -3,9 +3,16 @@ merge_data.py
 SOURCE A（みずほ: 回号・抽せん日・場所）+
 SOURCE B（KYO's: 当せん番号・当せん金）→ loto6_all.csv に統合
 
-[注記] KYO's LOTO6 CSVはShift-JIS（cp932）でエンコードされていることが
-確認されている（UTF-8では UnicodeDecodeError になる）。そのため
-SOURCE Bの読み込みはUTF-8失敗時にcp932へフォーレログーする。
+[注記1] KYO's LOTO6 CSVはShift-JIS（cp932）でエンコードされている
+（UTF-8では UnicodeDecodeError になる）。SOURCE Bの読み込みは
+UTF-8失敗時にcp932へフォーレログーする。
+
+[注記2] 実際のKYO's CSVヘッダーを確認した結果：
+- ロト6の当せん等級は実際には1等〜5等の5段階のみ（6等は存在しない）
+- ヘッダーに不規則な空白が含まれる（例: "1 等口数", "5等 賞金"）
+  → 正規化（空白除去）してからマッピングする必要がある
+- 実ヘッダー例: 開催回, 日付, 第1数字〜第6数字, BONUS数字,
+  1等口数〜5等口数, 1等賞金〜5等賞金, キャリーオーバー
 """
 from __future__ import annotations
 
@@ -26,22 +33,26 @@ MIZUHO_CSV = "data/raw/loto6_mizuho.csv"
 NUMBERS_CSV = "data/raw/loto6_numbers.csv"  # .gitignore 対象（KYO's, 再配布禁止）
 OUTPUT_CSV = "data/raw/loto6_all.csv"
 
-# SOURCE B カラムマッピング（KYO's CSV 実ヘッダー → 正規化）
+# SOURCE B カラムマッピング（KYO's CSV 実ヘッダー、空白正規化後 → 正規化名）
+# 注: ロト6の当せん等級は1等〜5等の5段階（6等は存在しない）
 COLUMN_MAP = {
-    "回号": "round",
+    "開催回": "round",
+    "日付": "draw_date_kyo",
     "第1数字": "n1", "第2数字": "n2", "第3数字": "n3",
     "第4数字": "n4", "第5数字": "n5", "第6数字": "n6",
-    "ボーナス数字": "bonus",
-    "1等当せん金額": "prize1_amount", "1等当せん口数": "prize1_winners",
-    "2等当せん金額": "prize2_amount", "2等当せん口数": "prize2_winners",
-    "3等当せん金額": "prize3_amount", "3等当せん口数": "prize3_winners",
-    "4等当せん金額": "prize4_amount", "4等当せん口数": "prize4_winners",
-    "5等当せん金額": "prize5_amount", "5等当せん口数": "prize5_winners",
-    "6等当せん金額": "prize6_amount", "6等当せん口数": "prize6_winners",
+    "BONUS数字": "bonus",
+    "1等口数": "prize1_winners", "2等口数": "prize2_winners",
+    "3等口数": "prize3_winners", "4等口数": "prize4_winners",
+    "5等口数": "prize5_winners",
+    "1等賞金": "prize1_amount", "2等賞金": "prize2_amount",
+    "3等賞金": "prize3_amount", "4等賞金": "prize4_amount",
+    "5等賞金": "prize5_amount",
+    "キャリーオーバー": "carryover",
 }
 
-PRIZE_AMOUNT_COLS = [f"prize{i}_amount" for i in range(1, 7)]
-PRIZE_WINNER_COLS = [f"prize{i}_winners" for i in range(1, 7)]
+# 実際に存在する等級は1〜5のみ（6等は存在しない）
+PRIZE_AMOUNT_COLS = [f"prize{i}_amount" for i in range(1, 6)]
+PRIZE_WINNER_COLS = [f"prize{i}_winners" for i in range(1, 6)]
 
 
 def read_csv_flexible(path: str) -> pd.DataFrame:
@@ -60,6 +71,24 @@ def read_csv_flexible(path: str) -> pd.DataFrame:
     except UnicodeDecodeError:
         logging.warning("UTF-8読み込み失敗、Shift-JISで再試行: %s", path)
         return pd.read_csv(path, encoding="cp932")
+
+
+def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    カラム名の不規則な空白（半角・全角）を除去して正規化する。
+    KYO's LOTO6 CSVには "1 等口数" のような空白混入があるため必須。
+
+    Args:
+        df: 正規化対象のDataFrame
+
+    Returns:
+        カラム名を正規化したDataFrame
+    """
+    df.columns = [
+        str(c).strip().replace(" ", "").replace("\u3000", "")
+        for c in df.columns
+    ]
+    return df
 
 
 def clean_prize_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -116,6 +145,16 @@ def merge_sources(
 
     df_a = read_csv_flexible(mizuho_path)
     df_b = read_csv_flexible(numbers_path)
+    df_b = normalize_columns(df_b)
+
+    missing = [k for k in COLUMN_MAP if k not in df_b.columns]
+    if missing:
+        logging.warning(
+            "COLUMN_MAPに定義されているが実データに存在しないカラム: %s "
+            "(KYO's CSVのフォーファットが変更された可能性があります)",
+            missing,
+        )
+
     df_b = df_b.rename(columns=COLUMN_MAP)
     df_b = clean_prize_columns(df_b)
 
