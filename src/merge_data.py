@@ -29,7 +29,7 @@ COLUMN_MAP = {
     "2 等当せん金額": "prize2_amount", "2 等当せん口数": "prize2_winners",
     "3 等当せん金額": "prize3_amount", "3 等当せん口数": "prize3_winners",
     "4 等当せん金額": "prize4_amount", "4 等当せん口数": "prize4_winners",
-    "5 等当せん金額": "prize5_amount", "5 等当せん口수": "prize5_winners",
+    "5 等当せん金額": "prize5_amount", "5 等当せん口数": "prize5_winners",
     "6 等当せん金額": "prize6_amount", "6 等当せん口数": "prize6_winners",
 }
 
@@ -59,7 +59,8 @@ def clean_prize_columns(df: pd.DataFrame) -> pd.DataFrame:
 def merge_sources() -> None:
     """SOURCE A + SOURCE B 를 round 기준으로 병합해 loto6_all.csv 저장"""
     df_a = pd.read_csv(MIZUHO_CSV, encoding="utf-8")
-    df_b = pd.read_csv(NUMBERS_CSV, encoding="utf-8")
+    # SOURCE B 는 일본어 Windows 인코딩 (CP932/Shift-JIS)
+    df_b = pd.read_csv(NUMBERS_CSV, encoding="cp932")
     df_b.rename(columns=COLUMN_MAP, inplace=True)
     df_b = clean_prize_columns(df_b)
 
