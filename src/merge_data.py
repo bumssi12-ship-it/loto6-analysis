@@ -20,6 +20,7 @@ NUMBERS_CSV  = "data/raw/loto6_numbers.csv"   # .gitignore 대상
 OUTPUT_CSV   = "data/raw/loto6_all.csv"
 
 # SOURCE B 컬럼 매핑 (KYO's CSV 실제 헤더 → 정규화)
+# 실제 헤더: ['開催回', '日付', '第 1 数字', '第 2 数字', '第 3 数字', '第 4 数字', '第 5 数字', '第 6 数字', 'BONUS 数字', ...]
 COLUMN_MAP = {
     "開催回":     "round",
     "第 1 数字":    "n1", "第 2 数字": "n2", "第 3 数字": "n3",
@@ -60,9 +61,13 @@ def merge_sources() -> None:
     df_a = pd.read_csv(MIZUHO_CSV, encoding="utf-8")
     # SOURCE B 는 일본어 Windows 인코딩 (CP932/Shift-JIS)
     df_b = pd.read_csv(NUMBERS_CSV, encoding="cp932")
-    df_b.rename(columns=COLUMN_MAP, inplace=True)
+    
+    # 컬럼 매핑 적용
+    df_b = df_b.rename(columns=COLUMN_MAP)
+    
+    # 당첨금 컬럼 정제
     df_b = clean_prize_columns(df_b)
-
+    
     # SOURCE B 를 기준으로 LEFT JOIN (전체 회차 보존)
     df_merged = pd.merge(df_b, df_a, on="round", how="left")
     df_merged["draw_date"] = pd.to_datetime(df_merged["draw_date"], errors="coerce")
