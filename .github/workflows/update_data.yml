@@ -36,7 +36,25 @@ jobs:
         run: mkdir -p data/raw data/analysis charts logs
 
       - name: Fetch latest Mizuho data (SOURCE A)
+        id: fetch_a
+        continue-on-error: true
         run: python src/fetch_data.py
+
+      - name: Warn if SOURCE A fetch failed
+        if: steps.fetch_a.outcome == 'failure'
+        run: |
+          echo "::warning::みずほCSVの自動取得に失敗しました（WAFによる403の可能性）。"
+          echo "::warning::既存の data/raw/loto6_mizuho.csv を使用して継続します。"
+          echo "::warning::最新データが必要な場合は、ブラウザで手動ダウンロードし"
+          echo "::warning::'python src/fetch_data.py --local <path>' でローカル更新後、"
+          echo "::warning::手動でコミット・プッシュしてください。"
+
+      - name: Check SOURCE A data exists
+        run: |
+          if [ ! -f data/raw/loto6_mizuho.csv ]; then
+            echo "::error::data/raw/loto6_mizuho.csv が存在しません。初回は手動でコミットしてください。"
+            exit 1
+          fi
 
       - name: Merge data sources
         run: |
@@ -48,9 +66,11 @@ jobs:
           fi
 
       - name: Run statistical analysis
+        continue-on-error: true
         run: python src/analyze.py
 
       - name: Generate charts
+        continue-on-error: true
         run: python src/visualize.py
 
       - name: Commit updated artifacts
