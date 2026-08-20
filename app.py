@@ -3,6 +3,7 @@ app.py — ロト 6 統計分析 Streamlit 대시보드
 GA4 태그 + Measurement Protocol 포함 + 추천번호 기능
 """
 import os
+import sys
 import time
 import uuid
 import streamlit as st
@@ -12,6 +13,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# ── sys.path 추가 (src/ 모듈 import 용) ────────────────────
+ROOT_DIR = Path(__file__).resolve().parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 # ── GA4 설정 ─────────────────────────────────────────────
 GA4_ID = os.getenv("GA4_MEASUREMENT_ID", "")
